@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import math
 import pathlib
 import re
 
@@ -149,16 +150,68 @@ def progress(run_dir) -> dict:
     return state
 
 
+def _write_metrics(run_dir: pathlib.Path) -> bool:
+    """run.log の最後の Etime 行から、run を数字で要約した metrics.json を書く。
+
+    ハブの kind="metrics" は「平坦な辞書の JSON(有限の数値だけ)」を期待する
+    (hub/run_metrics.py)。NetCDF を metrics として返すと読めない(2026-09-26 に実際に踏んだ)。
+    """
+    try:
+        text = (run_dir / "run.log").read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return False
+    line = None
+    for cand in text.splitlines():
+        if "Etime [" in cand and "MaxWind [" in cand:
+            line = cand
+    if line is None:
+        return False
+
+    def grab(pattern: str):
+        m = re.search(pattern, line)
+        try:
+            v = float(m.group(1)) if m else None
+        except ValueError:
+            v = None
+        return v if v is not None and math.isfinite(v) else None
+
+    metrics = {
+        "model_time_s": grab(r"Etime\s*\[\s*([0-9.eE+-]+)\s*s\s*\]"),
+        "max_wind_ms": grab(r"max wind\s*\[\s*([0-9.eE+-]+)\s*m/s\s*\]"),
+        "max_abs_w_ms": grab(r"max\(abs\(w\)\)\s*\[\s*([0-9.eE+-]+)\s*m/s\s*\]"),
+        "maxwind_cfl_ms": grab(r"MaxWind\s*\[\s*([0-9.eE+-]+)\s*\]"),
+    }
+    metrics = {k: v for k, v in metrics.items() if v is not None}
+    if not metrics:
+        return False
+    try:
+        (run_dir / "metrics.json").write_text(
+            json.dumps(metrics, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError:
+        return False
+    return True
+
+
 def results(run_dir) -> list[dict]:
-    """[{"path", "caption", "kind"}]。caption は必須。無ければ空リスト。"""
+    """[{"path", "caption", "kind"}]。caption は必須。無ければ空リスト。
+
+    kind は hub/viewers の名前から選ぶ: 数値の要約は "metrics"(JSON)、
+    NetCDF はプレビューせず "download"(ホスト側の場所を案内)。
+    """
     run_dir = pathlib.Path(run_dir)
     items = []
+    if _write_metrics(run_dir):
+        items.append({
+            "path": "metrics.json",
+            "kind": "metrics",
+            "caption": "run の要約(最終ステップの最大風速・最大鉛直速度、m/s)",
+        })
     try:
         for nc in sorted(run_dir.glob("supercell_*.nc")):
             items.append({
                 "path": nc.name,
-                "kind": "metrics",
-                "caption": f"portUrb出力 ({nc.name})",
+                "kind": "download",
+                "caption": f"portUrb出力 NetCDF ({nc.name})",
             })
     except OSError:
         pass
