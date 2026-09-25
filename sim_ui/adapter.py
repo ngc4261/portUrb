@@ -168,6 +168,12 @@ def progress(run_dir) -> dict:
         else:
             state["message"] = f"モデル時間 {sim_t:.0f}s"
 
+    # portUrb f4751cf 以降(fork)は明示的な完走行を出す。これがあれば確実に完走。
+    if "*** Simulation complete" in text:
+        state.update(percent=100.0, finished=True)
+        if "完走" not in state["message"]:
+            state["message"] = "完走しました(完走行を確認)"
+
     return state
 
 

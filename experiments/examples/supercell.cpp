@@ -154,6 +154,12 @@ int main(int argc, char** argv) {
       }
     } // End main simulation loop
 
+    // Explicit completion line so drivers/log parsers can tell "finished" from "died mid-run"
+    if (coupler.is_mainproc()) {
+      auto wall = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - tm).count();
+      std::cout << "*** Simulation complete: Etime [" << etime << " s] , Walltime [" << wall << " s] ***" << std::endl;
+    }
+
     yakl::timer_stop("main");
   }
   yakl::finalize();
