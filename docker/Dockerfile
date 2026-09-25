@@ -19,7 +19,10 @@ RUN git config --global url."https://github.com/".insteadOf "git@github.com:"
 WORKDIR /app
 COPY . /app
 
-RUN git submodule update --init --recursive external/YAKL external/yaml-cpp external/kokkos external/eigen
+# model/CMakeLists.txt は kokkos・YAKL・yaml-cpp・ponni・eigen を add_subdirectory する。
+# 一部だけ初期化すると ponni が空で configure が止まる(GitHub Actions run 36155354906 で実際に失敗)。
+# WGS84toCartesian も含めて全部入れる(ヘッダのみ、小さい)。
+RUN git submodule update --init --recursive
 
 # aura26_gpu_O3.env と同じ設定(-O3、YAKL_PROFILE無し、Ampere 86 = RTX 3090/3080)。
 # -march=native は使わない(踏みやすい罠: 組んだ機体でしか動かなくなる)。
