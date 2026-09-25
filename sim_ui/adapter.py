@@ -38,6 +38,15 @@ def schema() -> dict:
              "default": 120.0, "min": 60.0, "max": 7200.0, "unit": "s"},
             {"name": "out_freq_s", "label": "出力間隔(負で出力オフ)", "type": "float",
              "default": -1.0, "min": -1.0, "max": 3600.0, "unit": "s"},
+            # 温位バブル(portUrb 3cda8d8 以降は yaml から指定できる。既定は上流の固定値)
+            {"name": "bubble_amp_K", "label": "バブル振幅", "type": "float",
+             "default": 3.0, "min": 0.0, "max": 6.0, "unit": "K"},
+            {"name": "bubble_z_km", "label": "バブル中心高度", "type": "float",
+             "default": 1.5, "min": 0.5, "max": 5.0, "unit": "km"},
+            {"name": "bubble_radius_km", "label": "バブル水平半径", "type": "float",
+             "default": 10.0, "min": 1.0, "max": 50.0, "unit": "km"},
+            {"name": "bubble_depth_km", "label": "バブル鉛直半径", "type": "float",
+             "default": 1.5, "min": 0.2, "max": 5.0, "unit": "km"},
         ],
         "presets": {
             "quick": {"label": "下見(100x100x50, 2km格子, 120秒)",
@@ -77,6 +86,10 @@ def prepare(params: dict, run_dir) -> dict:
     xlen = float(params.get("xlen_km", 200.0)) * 1000.0
     sim_time = float(params.get("sim_time_s", 120.0))
     out_freq = float(params.get("out_freq_s", -1.0))
+    bubble_amp = float(params.get("bubble_amp_K", 3.0))
+    bubble_z = float(params.get("bubble_z_km", 1.5)) * 1000.0
+    bubble_rad = float(params.get("bubble_radius_km", 10.0)) * 1000.0
+    bubble_depth = float(params.get("bubble_depth_km", 1.5)) * 1000.0
 
     # 自分用の設定は params.json とは別名で書く(ハブが params.json を上書きするため)
     (run_dir / "urb_params.json").write_text(
@@ -96,6 +109,14 @@ inform_freq: 10.
 is_restart: false
 restart_file: none
 cfl: 0.6
+# warm bubble (centre = domain centre; sc_perturb.h reads these via coupler options)
+bubble_x: {xlen / 2:.0f}
+bubble_y: {xlen / 2:.0f}
+bubble_z: {bubble_z:.0f}
+bubble_radx: {bubble_rad:.0f}
+bubble_rady: {bubble_rad:.0f}
+bubble_radz: {bubble_depth:.0f}
+bubble_amp: {bubble_amp}
 """
     (run_dir / "input_supercell.yaml").write_text(supercell_yaml, encoding="utf-8")
     (run_dir / "input_dycore_supercell.yaml").write_text(_DYCORE_YAML, encoding="utf-8")
