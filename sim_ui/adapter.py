@@ -99,8 +99,10 @@ cfl: 0.6
     (run_dir / "input_supercell.yaml").write_text(supercell_yaml, encoding="utf-8")
     (run_dir / "input_dycore_supercell.yaml").write_text(_DYCORE_YAML, encoding="utf-8")
 
+    # run_supercell.sh は、supercell がカレントから読む ./inputs/wrf_supercell_sounding.yaml を
+    # イメージ内から /work に写してから本体を exec する(docker/run_supercell.sh)。
     return {
-        "command": ["/app/build/supercell",
+        "command": ["/app/run_supercell.sh",
                     "/work/input_supercell.yaml",
                     "/work/input_dycore_supercell.yaml"],
         "workdir": "/work",

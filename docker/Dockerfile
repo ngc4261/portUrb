@@ -40,5 +40,14 @@ WORKDIR /app/build
 RUN ./cmakescript.sh ../experiments/examples \
     && make -j"$(nproc)" supercell
 
+# 起動ラッパー。supercell は ./inputs/wrf_supercell_sounding.yaml をカレントから読むため、
+# 作業フォルダ(/work)に inputs/ を写してから本体を exec する。
+# ENTRYPOINT は付けない: sim-hub は `docker run <image> <command...>` の形で完全なコマンドを
+# 渡す(needs があるときは `sh -c`)ので、ENTRYPOINT があると引数が二重になる。
+COPY docker/run_supercell.sh /app/run_supercell.sh
+RUN chmod +x /app/run_supercell.sh
+
 # 実行時のスレッド数は sim-hub 側が OMP_NUM_THREADS 等で渡す(コード側で決め打ちしない)。
-ENTRYPOINT ["/app/build/supercell"]
+# 手で動かすとき: docker run --rm --gpus all -v "$PWD":/work -w /work <image> \
+#                  /app/run_supercell.sh input_supercell.yaml input_dycore_supercell.yaml
+CMD ["/app/run_supercell.sh", "input_supercell.yaml", "input_dycore_supercell.yaml"]
