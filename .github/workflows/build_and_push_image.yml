@@ -1,0 +1,114 @@
+# イメージを組んで ghcr.io に上げる。
+#
+# 依頼者の判断(2026-09-18): 長く持ち続けるトークンを手元に置かず、
+# 「この作業にこの権限を与える」方式にする。
+#
+# ここで使う GITHUB_TOKEN は GitHub Actions が実行ごとに自動で発行し、終われば消える。
+# PC には何も残らない。classic PAT を作る必要も、docker login を手で打つ必要も無い。
+# (ghcr.io は classic PAT しか受け付けず、gh CLI の OAuth トークンでは push できない。
+#  その制限を回避する、というより、そもそもトークンを持たない形にしている。)
+#
+# arm64(Mac)について: ここでは組まない。GitHub の実行機は amd64 なので、
+# arm64 を組むには QEMU でエミュレートすることになり、portUrbのような
+# コンパイル主体の処理は数十分〜1時間以上かかる。
+# **arm64 は Mac 実機(もみもみ)で組む**(依頼者の判断 2026-09-18)。手順は HOW_TO_RUN.md。
+#   Mac 側:  docker buildx build --platform linux/arm64 -t <イメージ>:<版>-arm64 -f docker/Dockerfile --push .
+#   まとめ:  Mac が -arm64 を上げたあと、このワークフローが次に走ったときに自動でまとめる。
+#            すぐ反映したいときは Actions を手動実行するか、Mac 側で次を打つ:
+#            docker buildx imagetools create -t <イメージ>:<版> <イメージ>:<版>-amd64 <イメージ>:<版>-arm64
+# 上の手動実行 (workflow_dispatch) にも arm64 の選択肢は残してあるが、遅いので非常用。
+name: イメージを ghcr.io に上げる
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - docker/**
+      - sim_ui/**
+      - .github/workflows/build_and_push_image.yml
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: 組むアーキテクチャ(arm64 は Mac 用。QEMU でエミュレートするので遅い)
+        default: linux/amd64
+        type: choice
+        options:
+          - linux/amd64
+          - linux/amd64,linux/arm64
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/sim-urb
+  VERSION: "2026.09"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write          # ← これが push の権限。トークンを保管しない方式の要
+    steps:
+      - uses: actions/checkout@v4
+
+      # arm64 を組むときだけ要る。amd64 だけなら省く(その分速い)。
+      - name: QEMU を用意する
+        if: contains(inputs.platforms, 'arm64')
+        uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: ghcr.io にログインする
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 組んで上げる
+        uses: docker/build-push-action@v6
+        with:
+          context: .                     # ビルド文脈はリポジトリ直下。docker/ ではない
+          file: docker/Dockerfile
+          platforms: ${{ inputs.platforms || 'linux/amd64' }}
+          push: true
+          # bare タグ(:2026.09)と :latest はここで付けない。amd64 だけのビルドで
+          # それらを上書きすると、Mac が上げた arm64 が消える(2026-09-22 に実際に消えた)。
+          # まとめるのは下の「arm64 があればまとめる」ステップ。
+          tags: ${{ env.IMAGE }}:${{ env.VERSION }}-amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # bare タグ(:2026.09)と :latest はここでしか作らない。
+      # Mac(もみもみ)が -arm64 タグを上げてあれば一緒にまとめ、無ければ amd64 だけでまとめる。
+      # platforms に arm64 を選んだ手動実行のときは -amd64 タグ自体が両アーキ入りなので、
+      # Mac 製の -arm64 とは混ぜない(同じ arm64 が二重に入るのを避ける)。
+      - name: arm64 があればまとめる
+        run: |
+          set -eu
+          PLATFORMS="${{ inputs.platforms || 'linux/amd64' }}"
+          SRC="$IMAGE:$VERSION-amd64"
+          if [ "${PLATFORMS#*arm64}" = "$PLATFORMS" ] \
+             && docker buildx imagetools inspect "$IMAGE:$VERSION-arm64" >/dev/null 2>&1; then
+            SRC="$SRC $IMAGE:$VERSION-arm64"
+            echo "arm64 タグが見つかったので amd64 と合わせる"
+          else
+            echo "arm64 タグは使わない(未 push か、このビルド自体が両アーキ)"
+          fi
+          docker buildx imagetools create -t "$IMAGE:$VERSION" -t "$IMAGE:latest" $SRC
+          echo "MERGED_FROM=$SRC" >> "$GITHUB_ENV"
+
+      - name: まとまった中身を確かめる
+        run: |
+          set -eu
+          echo "### :$VERSION の中身" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          docker buildx imagetools inspect "$IMAGE:$VERSION" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 結果を出す
+        run: |
+          echo "### 上げたイメージ" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ env.IMAGE }}:${{ env.VERSION }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ env.IMAGE }}:latest" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "アーキテクチャ: ${{ inputs.platforms || 'linux/amd64' }}" >> "$GITHUB_STEP_SUMMARY"

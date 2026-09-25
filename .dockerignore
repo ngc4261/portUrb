@@ -1,0 +1,20 @@
+# ビルド文脈はリポジトリ直下。イメージに要らないものを外す。
+# 注意: .git/ は除外しない — Dockerfile内の `git submodule update --init` が
+# .gitmodules とサブモジュールのコミット参照を読むのに必要(TORと異なりportUrbは
+# submoduleを使うため)。
+# build/ はローカルの実行成果物(数十GB)が溜まるので丸ごと外し、
+# リポジトリ管理下のビルドスクリプト・設定だけを ! で戻す。
+build/**
+!build/cmakescript.sh
+!build/cmakeclean.sh
+!build/machines/
+!build/machines/**
+!build/launchers/
+!build/launchers/**
+!build/postproc/
+!build/postproc/**
+*.nc
+*.log
+figures/
+__pycache__/
+.venv/
