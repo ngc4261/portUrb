@@ -165,13 +165,17 @@ namespace custom_modules {
 
     } else if (coupler.get_option<std::string>("init_data") == "supercell") {
 
-      real x0    = xlen / 2;
-      real y0    = ylen / 2;
-      real z0    = 1500;
-      real radx  = 10000;
-      real rady  = 10000;
-      real radz  = 1500;
-      real amp   = 3;
+      // Warm bubble. All values can be set from the supercell input yaml
+      // (bubble_x, bubble_y, bubble_z, bubble_radx, bubble_rady, bubble_radz, bubble_amp;
+      // supercell.cpp copies them into coupler options). Defaults are the original
+      // hard-coded values, so runs without these keys are unchanged.
+      real x0    = coupler.get_option<real>( "bubble_x"    , xlen / 2 );
+      real y0    = coupler.get_option<real>( "bubble_y"    , ylen / 2 );
+      real z0    = coupler.get_option<real>( "bubble_z"    , 1500     );
+      real radx  = coupler.get_option<real>( "bubble_radx" , 10000    );
+      real rady  = coupler.get_option<real>( "bubble_rady" , 10000    );
+      real radz  = coupler.get_option<real>( "bubble_radz" , 1500     );
+      real amp   = coupler.get_option<real>( "bubble_amp"  , 3        );
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         real Tpert = 0;
         for (int kk=0; kk<nqpoints; kk++) {

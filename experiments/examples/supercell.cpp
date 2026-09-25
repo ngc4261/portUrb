@@ -31,6 +31,14 @@ int main(int argc, char** argv) {
     auto is_restart    = config["is_restart"  ].as<bool       >(false);
     auto restart_file  = config["restart_file"].as<std::string>("");
     auto cfl           = config["cfl"         ].as<real       >(0.6);
+    // Warm bubble (optional; defaults = the values sc_perturb.h used to hard-code)
+    auto bubble_x      = config["bubble_x"    ].as<real       >(xlen/2);
+    auto bubble_y      = config["bubble_y"    ].as<real       >(ylen/2);
+    auto bubble_z      = config["bubble_z"    ].as<real       >(1500);
+    auto bubble_radx   = config["bubble_radx" ].as<real       >(10000);
+    auto bubble_rady   = config["bubble_rady" ].as<real       >(10000);
+    auto bubble_radz   = config["bubble_radz" ].as<real       >(1500);
+    auto bubble_amp    = config["bubble_amp"  ].as<real       >(3);
 
     YAML::Node config_dycore = YAML::LoadFile( std::string(argv[2]) );
     if ( !config_dycore ) { endrun("ERROR: Invalid abl_neutral input file"); }
@@ -66,6 +74,13 @@ int main(int argc, char** argv) {
     coupler.set_option<bool       >( "dycore_rsst"               , rsst         );
     coupler.set_option<bool       >( "dycore_use_weno"           , false        );
     coupler.set_option<bool       >( "dycore_use_weno_immersed"  , true         );
+    coupler.set_option<real       >( "bubble_x"                  , bubble_x     );
+    coupler.set_option<real       >( "bubble_y"                  , bubble_y     );
+    coupler.set_option<real       >( "bubble_z"                  , bubble_z     );
+    coupler.set_option<real       >( "bubble_radx"               , bubble_radx  );
+    coupler.set_option<real       >( "bubble_rady"               , bubble_rady  );
+    coupler.set_option<real       >( "bubble_radz"               , bubble_radz  );
+    coupler.set_option<real       >( "bubble_amp"                , bubble_amp   );
 
     coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
                   coupler.generate_levels_equal(nz,zlen) ,
@@ -138,6 +153,12 @@ int main(int argc, char** argv) {
         output_counter.reset();
       }
     } // End main simulation loop
+
+    // Explicit completion line so drivers/log parsers can tell "finished" from "died mid-run"
+    if (coupler.is_mainproc()) {
+      auto wall = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - tm).count();
+      std::cout << "*** Simulation complete: Etime [" << etime << " s] , Walltime [" << wall << " s] ***" << std::endl;
+    }
 
     yakl::timer_stop("main");
   }
